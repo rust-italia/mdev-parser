@@ -80,11 +80,7 @@ impl TryFrom<&str> for Conf {
             first_part = &first_part[1..];
         }
 
-        let filter = match first_part.bytes().next() {
-            Some(b'@') => Filter::MajMin(first_part[1..].try_into()?),
-            Some(b'$') => Filter::EnvRegex(first_part[1..].try_into()?),
-            _ => Filter::DeviceRegex(first_part.try_into()?),
-        };
+        let filter = first_part.try_into()?;
 
         let user_group = parts
             .next()
@@ -100,6 +96,8 @@ impl TryFrom<&str> for Conf {
             None => None,
             Some(s) => Some(s.try_into()?),
         };
+
+        // TODO: check if regex gruops referenced in on_creation match the one on filter
 
         //TODO: optional parts
 
@@ -119,6 +117,18 @@ pub enum Filter {
     DeviceRegex(DeviceRegex),
     EnvRegex(EnvRegex),
     MajMin(MajMin),
+}
+
+impl TryFrom<&str> for Filter {
+    type Error = Error;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        Ok(match s.bytes().next() {
+            Some(b'@') => Self::MajMin(s[1..].try_into()?),
+            Some(b'$') => Self::EnvRegex(s[1..].try_into()?),
+            _ => Self::DeviceRegex(s.try_into()?),
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -249,7 +259,7 @@ impl TryFrom<&str> for Mode {
 #[derive(Debug)]
 /// Additional actions to take on creation of the device node
 pub enum OnCreation {
-    /// Moves/renames the device
+    /// Moves/renames the device. If the path ends with `/` then the name will be stay the same
     Move(String),
     /// Same as [`OnCreation::Move`] but also creates a symlink in `/dev/` to the
     /// renamed/moved device
