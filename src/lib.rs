@@ -4,16 +4,18 @@ use regex::Regex;
 
 use tracing::error;
 
+type Error = ();
+
 #[derive(Debug)]
 pub struct Conf<'a> {
     stop: bool,
     filter: Filter,
-    user_group: &'a str,
+    user_group: UserGroup,
     mode: &'a str,
 }
 
 impl<'a> TryFrom<&'a str> for Conf<'a> {
-    type Error = ();
+    type Error = Error;
 
     fn try_from(s: &'a str) -> Result<Self, Self::Error> {
         let mut parts = s.split_whitespace();
@@ -31,7 +33,7 @@ impl<'a> TryFrom<&'a str> for Conf<'a> {
         };
 
         // TODO: parse user:group
-        let user_group = parts.next().ok_or(())?;
+        let user_group = parts.next().ok_or(())?.try_into()?;
 
         // TODO: parse mode
         let mode = parts.next().ok_or(())?;
@@ -60,7 +62,7 @@ pub struct DevicenameRegex {
 }
 
 impl TryFrom<&str> for DevicenameRegex {
-    type Error = ();
+    type Error = Error;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         Ok(DevicenameRegex {
@@ -80,6 +82,30 @@ pub struct MajMin {
     //maj: String,
 //min: String,
 //min2: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct UserGroup {
+    user: String,
+    group: String,
+}
+
+impl TryFrom<&str> for UserGroup {
+    type Error = Error;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        let (user, group) = s.split_once(":").ok_or(())?;
+        if user.chars().any(char::is_whitespace) {
+            return Err(());
+        }
+        if group.chars().any(char::is_whitespace) {
+            return Err(());
+        }
+        Ok(Self {
+            user: user.into(),
+            group: group.into(),
+        })
+    }
 }
 
 fn filter(s: &str) -> Option<Conf> {
