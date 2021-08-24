@@ -35,52 +35,49 @@ pub struct MajMin {
 //min2: Option<String>,
 }
 
+fn filter(s: &str) -> Option<Conf> {
+    // Exclude comments
+    if s.chars().next()? == '#' {
+        return None;
+    }
+
+    let mut parts = s.split_whitespace();
+    // auto-check for empty strings
+    let mut first_part = parts.next()?.chars().peekable();
+    let stop = first_part.next_if_eq(&'-').is_some();
+
+    let filter = match first_part.peek() {
+        Some('@') => Filter::MajMin(MajMin {
+            //TODO
+        }),
+        Some('$') => Filter::EnvRegex(EnvRegex {
+            //TODO
+        }),
+        _ => Filter::DevicenameRegex(DevicenameRegex {
+            regex: Regex::new(&first_part.collect::<String>())
+                .map_err(|e| error!("Regex parse error: {}", e))
+                .ok()?,
+        }),
+    };
+
+    // TODO: parse user:group
+    let user_group = parts.next()?;
+
+    // TODO: parse mode
+    let mode = parts.next()?;
+
+    //TODO: optional parts
+
+    Some(Conf {
+        stop,
+        filter,
+        user_group,
+        mode,
+    })
+}
+
 pub fn parse(input: &str) -> Vec<Conf> {
-    input
-        .lines()
-        .filter_map(|s| {
-            // Exclude comments
-            if s.chars().next()? == '#' {
-                return None;
-            }
-
-            let mut parts = s.split_whitespace();
-            let first_part = parts.next()?; //auto-check for empty strings
-            let mut first_part_c = first_part.chars().peekable();
-            let dash = if first_part_c.peek() == Some(&'-') {
-                first_part_c.next();
-                true
-            } else {
-                false
-            };
-
-            let filter = match first_part_c.peek() {
-                Some('@') => Filter::MajMin(MajMin {
-                        //TODO
-                    }),
-                Some('$') => Filter::EnvRegex(EnvRegex {
-                        //TODO
-                    }),
-                _ => Filter::DevicenameRegex(DevicenameRegex {
-                    regex: Regex::new(&first_part_c.collect::<String>())
-                        .map_err(|e| error!("Regex parse error: {}", e))
-                        .ok()?,
-                }),
-            };
-
-            let user_group = parts.next()?; //TODO: parse user:group
-            let mode = parts.next()?; //TODO: parse mode
-
-            //TODO: optional parts
-
-            Some(Conf {
-                stop: dash,
-                filter,
-                user_group,
-                mode,
-            })
-        })
-        .collect()
+    input.lines().filter_map(filter).collect()
 }
 
 #[cfg(test)]
