@@ -1,10 +1,41 @@
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    error::Error as StdError,
+    fmt::Display,
+};
 
 use regex::Regex;
 
 use tracing::error;
 
-type Error = ();
+#[derive(Debug)]
+pub enum ParsingError {
+    Empty,
+    Comment,
+    DevicenameRegex(String),
+    MajMin(String),
+    Mode(String),
+    EnvRegex(String),
+    UserGroup(String),
+}
+
+impl Display for ParsingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Empty => write!(f, "empty line"),
+            Self::Comment => write!(f, "comment line"),
+            Self::DevicenameRegex(err) => write!(f, "devicename regex error: {}", err),
+            Self::MajMin(err) => write!(f, "version error: {}", err),
+            Self::Mode(err) => write!(f, "mode error: {}", err),
+            Self::EnvRegex(err) => write!(f, "env var regex error: {}", err),
+            Self::UserGroup(err) => write!(f, "user and/or group error: {}", err),
+        }
+    }
+}
+
+impl StdError for ParsingError {}
+
+type Error = ParsingError;
 
 #[derive(Debug)]
 pub struct Conf {
@@ -18,9 +49,13 @@ impl TryFrom<&str> for Conf {
     type Error = Error;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
+        if s.starts_with('#') {
+            return Err(Error::Comment);
+        }
+
         let mut parts = s.split_whitespace();
 
-        let mut first_part = parts.next().ok_or(())?;
+        let mut first_part = parts.next().ok_or(Error::Empty)?;
         let stop = first_part.bytes().next() == Some(b'-');
         if stop {
             first_part = &first_part[1..];
@@ -32,8 +67,15 @@ impl TryFrom<&str> for Conf {
             _ => Filter::DevicenameRegex(first_part.try_into()?),
         };
 
-        let user_group = parts.next().ok_or(())?.try_into()?;
-        let mode = parts.next().ok_or(())?.try_into()?;
+        let user_group = parts
+            .next()
+            .ok_or_else(|| Error::UserGroup("missing".into()))?
+            .try_into()?;
+
+        let mode = parts
+            .next()
+            .ok_or_else(|| Error::Mode("missing".into()))?
+            .try_into()?;
 
         //TODO: optional parts
 
@@ -63,7 +105,8 @@ impl TryFrom<&str> for DevicenameRegex {
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         Ok(Self {
-            regex: Regex::new(s).or(Err(()))?,
+            regex: Regex::new(s)
+                .map_err(|err| Error::DevicenameRegex(format!("invalid regex: {}", err)))?,
         })
     }
 }
@@ -78,13 +121,16 @@ impl TryFrom<&str> for EnvRegex {
     type Error = Error;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
-        let (var, regex) = s.split_once('=').ok_or(())?;
+        let (var, regex) = s
+            .split_once('=')
+            .ok_or_else(|| Error::EnvRegex("missing value".into()))?;
         if var.chars().any(char::is_whitespace) {
-            return Err(());
+            return Err(Error::EnvRegex("env var contains white spaces".into()));
         }
         Ok(Self {
             var: var.into(),
-            regex: Regex::new(regex).or(Err(()))?,
+            regex: Regex::new(regex)
+                .map_err(|err| Error::EnvRegex(format!("invalid regex: {}", err)))?,
         })
     }
 }
@@ -100,15 +146,24 @@ impl TryFrom<&str> for MajMin {
     type Error = Error;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
-        let (maj, mut min) = s.split_once(',').ok_or(())?;
+        let (maj, mut min) = s
+            .split_once(',')
+            .ok_or_else(|| Error::MajMin("missing min".into()))?;
         let mut min2 = None;
         if let Some((m, m2)) = min.split_once('-') {
             min = m;
-            min2 = Some(m2.parse().or(Err(()))?);
+            min2 = Some(
+                m2.parse()
+                    .map_err(|_| Error::MajMin("invalid min2".into()))?,
+            );
         }
         Ok(Self {
-            maj: maj.parse().or(Err(()))?,
-            min: min.parse().or(Err(()))?,
+            maj: maj
+                .parse()
+                .map_err(|_| Error::MajMin("invalid maj".into()))?,
+            min: min
+                .parse()
+                .map_err(|_| Error::MajMin("invalid min".into()))?,
             min2,
         })
     }
@@ -124,12 +179,14 @@ impl TryFrom<&str> for UserGroup {
     type Error = Error;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
-        let (user, group) = s.split_once(":").ok_or(())?;
+        let (user, group) = s
+            .split_once(":")
+            .ok_or_else(|| Error::UserGroup("missing group".into()))?;
         if user.chars().any(char::is_whitespace) {
-            return Err(());
+            return Err(Error::UserGroup("user name contains white spaces".into()));
         }
         if group.chars().any(char::is_whitespace) {
-            return Err(());
+            return Err(Error::UserGroup("group name contains white spaces".into()));
         }
         Ok(Self {
             user: user.into(),
@@ -149,21 +206,23 @@ impl TryFrom<&str> for Mode {
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         match *s.as_bytes() {
             [a @ b'0'..=b'7', b @ b'0'..=b'7', c @ b'0'..=b'7'] => Ok(Self { mode: [a, b, c] }),
-            _ => Err(()),
+            _ => Err(Error::Mode("invalid value".into())),
         }
     }
 }
 
-fn filter(s: &str) -> Option<Conf> {
-    // Exclude comments
-    if s.starts_with('#') {
-        return None;
-    }
-    Conf::try_from(s).ok()
-}
-
 pub fn parse(input: &str) -> Vec<Conf> {
-    input.lines().filter_map(filter).collect()
+    input
+        .lines()
+        .filter_map(|s| match s.try_into() {
+            Ok(v) => Some(v),
+            Err(Error::Comment) | Err(Error::Empty) => None,
+            Err(err) => {
+                error!("parsing error: {}", err);
+                None
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
