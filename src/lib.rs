@@ -2,6 +2,7 @@ use std::{
     convert::{TryFrom, TryInto},
     error::Error as StdError,
     fmt::Display,
+    str::from_utf8,
 };
 
 use regex::Regex;
@@ -125,6 +126,50 @@ impl TryFrom<&str> for Conf {
             on_creation,
             command,
         })
+    }
+}
+
+impl Display for Conf {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if !self.stop {
+            write!(f, "-")?;
+        }
+        match &self.filter {
+            Filter::DeviceRegex(v) => write!(f, "{}", v.regex),
+            Filter::EnvRegex(v) => write!(f, "${}={}", v.var, v.regex),
+            Filter::MajMin(MajMin {
+                maj,
+                min,
+                min2: Some(min2),
+            }) => write!(f, "@{},{}-{}", maj, min, min2),
+            Filter::MajMin(v) => write!(f, "@{},{}", v.maj, v.min),
+        }?;
+        write!(
+            f,
+            " {}:{} {}",
+            self.user_group.user,
+            self.user_group.group,
+            from_utf8(&self.mode.mode).unwrap()
+        )?;
+        if let Some(on_creation) = &self.on_creation {
+            match on_creation {
+                OnCreation::Move(p) => write!(f, " ={}", p),
+                OnCreation::SymLink(p) => write!(f, " >{}", p),
+                OnCreation::Prevent => write!(f, " !"),
+            }?;
+        }
+        if let Some(command) = &self.command {
+            match command.when {
+                WhenToRun::After => write!(f, " @"),
+                WhenToRun::Before => write!(f, " $"),
+                WhenToRun::Both => write!(f, " *"),
+            }?;
+            write!(f, "{}", command.path)?;
+            for arg in &command.args {
+                write!(f, " {}", arg)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -474,6 +519,8 @@ SUBSYSTEM=usb;DEVTYPE=usb_device;.* root:root 660 */opt/mdev/helpers/dev-bus-usb
 # Catch-all other devices, Right now useful only for debuging.
 #.* root:root 660 */opt/mdev/helpers/catch-all
 "#;
-        println!("{:#?}", super::parse(input));
+        for conf in super::parse(input) {
+            println!("{}", conf);
+        }
     }
 }
