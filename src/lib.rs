@@ -2,13 +2,13 @@ use regex::Regex;
 
 use tracing::error;
 
-type Conf<'a> = (Filter, &'a str, &'a str);
+type Conf<'a> = (bool, Filter, &'a str, &'a str);
 
 #[derive(Debug)]
 pub enum Filter {
-    DevicenameRegex(bool, DevicenameRegex),
-    EnvRegex(bool, EnvRegex),
-    MajMin(bool, MajMin),
+    DevicenameRegex(DevicenameRegex),
+    EnvRegex(EnvRegex),
+    MajMin(MajMin),
 }
 
 #[derive(Debug)]
@@ -49,26 +49,17 @@ pub fn parse(input: &str) -> Vec<Conf> {
             };
 
             let filter = match first_part_c.peek() {
-                Some('@') => Filter::MajMin(
-                    dash,
-                    MajMin {
+                Some('@') => Filter::MajMin(MajMin {
                         //TODO
-                    },
-                ),
-                Some('$') => Filter::EnvRegex(
-                    dash,
-                    EnvRegex {
+                    }),
+                Some('$') => Filter::EnvRegex(EnvRegex {
                         //TODO
-                    },
-                ),
-                _ => Filter::DevicenameRegex(
-                    dash,
-                    DevicenameRegex {
-                        regex: Regex::new(&first_part_c.collect::<String>())
-                            .map_err(|e| error!("Regex parse error: {}", e))
-                            .ok()?,
-                    },
-                ),
+                    }),
+                _ => Filter::DevicenameRegex(DevicenameRegex {
+                    regex: Regex::new(&first_part_c.collect::<String>())
+                        .map_err(|e| error!("Regex parse error: {}", e))
+                        .ok()?,
+                }),
             };
 
             let user_group = parts.next()?; //TODO: parse user:group
@@ -76,7 +67,7 @@ pub fn parse(input: &str) -> Vec<Conf> {
 
             //TODO: optional parts
 
-            Some((filter, user_group, mode))
+            Some((dash, filter, user_group, mode))
         })
         .collect()
 }
