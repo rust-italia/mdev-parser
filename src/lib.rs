@@ -1,3 +1,5 @@
+use std::convert::{TryFrom, TryInto};
+
 use regex::Regex;
 
 use tracing::error;
@@ -10,6 +12,41 @@ pub struct Conf<'a> {
     mode: &'a str,
 }
 
+impl<'a> TryFrom<&'a str> for Conf<'a> {
+    type Error = ();
+
+    fn try_from(s: &'a str) -> Result<Self, Self::Error> {
+        let mut parts = s.split_whitespace();
+        let mut first_part = parts.next().ok_or(())?.chars().peekable();
+        let stop = first_part.next_if_eq(&'-').is_some();
+
+        let filter = match first_part.peek() {
+            Some('@') => Filter::MajMin(MajMin {
+                //TODO
+            }),
+            Some('$') => Filter::EnvRegex(EnvRegex {
+                //TODO
+            }),
+            _ => Filter::DevicenameRegex(first_part.collect::<String>().as_str().try_into()?),
+        };
+
+        // TODO: parse user:group
+        let user_group = parts.next().ok_or(())?;
+
+        // TODO: parse mode
+        let mode = parts.next().ok_or(())?;
+
+        //TODO: optional parts
+
+        Ok(Conf {
+            stop,
+            filter,
+            user_group,
+            mode,
+        })
+    }
+}
+
 #[derive(Debug)]
 pub enum Filter {
     DevicenameRegex(DevicenameRegex),
@@ -20,6 +57,16 @@ pub enum Filter {
 #[derive(Debug)]
 pub struct DevicenameRegex {
     regex: Regex,
+}
+
+impl TryFrom<&str> for DevicenameRegex {
+    type Error = ();
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        Ok(DevicenameRegex {
+            regex: Regex::new(s).map_err(|e| error!("Regex parse error: {}", e))?,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -37,43 +84,10 @@ pub struct MajMin {
 
 fn filter(s: &str) -> Option<Conf> {
     // Exclude comments
-    if s.chars().next()? == '#' {
+    if s.starts_with('#') {
         return None;
     }
-
-    let mut parts = s.split_whitespace();
-    // auto-check for empty strings
-    let mut first_part = parts.next()?.chars().peekable();
-    let stop = first_part.next_if_eq(&'-').is_some();
-
-    let filter = match first_part.peek() {
-        Some('@') => Filter::MajMin(MajMin {
-            //TODO
-        }),
-        Some('$') => Filter::EnvRegex(EnvRegex {
-            //TODO
-        }),
-        _ => Filter::DevicenameRegex(DevicenameRegex {
-            regex: Regex::new(&first_part.collect::<String>())
-                .map_err(|e| error!("Regex parse error: {}", e))
-                .ok()?,
-        }),
-    };
-
-    // TODO: parse user:group
-    let user_group = parts.next()?;
-
-    // TODO: parse mode
-    let mode = parts.next()?;
-
-    //TODO: optional parts
-
-    Some(Conf {
-        stop,
-        filter,
-        user_group,
-        mode,
-    })
+    Conf::try_from(s).ok()
 }
 
 pub fn parse(input: &str) -> Vec<Conf> {
