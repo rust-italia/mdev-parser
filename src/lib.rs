@@ -80,8 +80,8 @@ impl TryFrom<&str> for Conf {
         let mut parts = s.split_whitespace();
 
         let mut first_part = parts.next().ok_or(Error::Empty)?;
-        let stop = first_part.bytes().next() == Some(b'-');
-        if stop {
+        let stop = first_part.bytes().next() != Some(b'-');
+        if !stop {
             first_part = &first_part[1..];
         }
         let filter = first_part.try_into()?;
