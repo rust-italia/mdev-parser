@@ -27,16 +27,14 @@ impl TryFrom<&str> for Conf {
                 first_part.next();
                 Filter::MajMin(first_part.collect::<String>().as_str().try_into()?)
             }
-            Some('$') => Filter::EnvRegex(EnvRegex {
-                //TODO
-            }),
+            Some('$') => {
+                first_part.next();
+                Filter::EnvRegex(first_part.collect::<String>().as_str().try_into()?)
+            }
             _ => Filter::DevicenameRegex(first_part.collect::<String>().as_str().try_into()?),
         };
 
-        // TODO: parse user:group
         let user_group = parts.next().ok_or(())?.try_into()?;
-
-        // TODO: parse mode
         let mode = parts.next().ok_or(())?.try_into()?;
 
         //TODO: optional parts
@@ -74,8 +72,23 @@ impl TryFrom<&str> for DevicenameRegex {
 
 #[derive(Debug)]
 pub struct EnvRegex {
-    //var: String,
-//regex: Regex,
+    var: String,
+    regex: Regex,
+}
+
+impl TryFrom<&str> for EnvRegex {
+    type Error = Error;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        let (var, regex) = s.split_once('=').ok_or(())?;
+        if var.chars().any(char::is_whitespace) {
+            return Err(());
+        }
+        Ok(Self {
+            var: var.into(),
+            regex: Regex::new(regex).or(Err(()))?,
+        })
+    }
 }
 
 #[derive(Debug)]
