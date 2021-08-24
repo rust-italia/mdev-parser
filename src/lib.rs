@@ -9,13 +9,21 @@ use regex::Regex;
 use tracing::error;
 
 #[derive(Debug)]
+/// Enumeration of all the errors that can happen while parsing a configuration line
 pub enum ParsingError {
+    /// The line is empty
     Empty,
+    /// The line is a comment
     Comment,
-    DevicenameRegex(String),
+    /// The device name regex is invalid
+    DeviceRegex(String),
+    /// The version is invalid
     MajMin(String),
+    /// The mode is invalid
     Mode(String),
+    /// The env var regex is invalid
     EnvRegex(String),
+    /// The user group is invalid
     UserGroup(String),
 }
 
@@ -24,7 +32,7 @@ impl Display for ParsingError {
         match self {
             Self::Empty => write!(f, "empty line"),
             Self::Comment => write!(f, "comment line"),
-            Self::DevicenameRegex(err) => write!(f, "devicename regex error: {}", err),
+            Self::DeviceRegex(err) => write!(f, "devicename regex error: {}", err),
             Self::MajMin(err) => write!(f, "version error: {}", err),
             Self::Mode(err) => write!(f, "mode error: {}", err),
             Self::EnvRegex(err) => write!(f, "env var regex error: {}", err),
@@ -38,10 +46,15 @@ impl StdError for ParsingError {}
 type Error = ParsingError;
 
 #[derive(Debug)]
+/// A line in the configuration file
 pub struct Conf {
+    /// Wether to stop is this filter matches
     stop: bool,
+    /// Filter used to match the devices
     filter: Filter,
+    /// User and gruop that will own the device
     user_group: UserGroup,
+    /// Permissions that the specified user and group have on the device
     mode: Mode,
 }
 
@@ -64,7 +77,7 @@ impl TryFrom<&str> for Conf {
         let filter = match first_part.bytes().next() {
             Some(b'@') => Filter::MajMin(first_part[1..].try_into()?),
             Some(b'$') => Filter::EnvRegex(first_part[1..].try_into()?),
-            _ => Filter::DevicenameRegex(first_part.try_into()?),
+            _ => Filter::DeviceRegex(first_part.try_into()?),
         };
 
         let user_group = parts
@@ -89,29 +102,33 @@ impl TryFrom<&str> for Conf {
 }
 
 #[derive(Debug)]
+/// Filter used for matching the devices
 pub enum Filter {
-    DevicenameRegex(DevicenameRegex),
+    DeviceRegex(DeviceRegex),
     EnvRegex(EnvRegex),
     MajMin(MajMin),
 }
 
 #[derive(Debug)]
-pub struct DevicenameRegex {
+/// A regex used for matching devices based on their names
+pub struct DeviceRegex {
+    /// [`Regex`] used for matching
     regex: Regex,
 }
 
-impl TryFrom<&str> for DevicenameRegex {
+impl TryFrom<&str> for DeviceRegex {
     type Error = Error;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         Ok(Self {
             regex: Regex::new(s)
-                .map_err(|err| Error::DevicenameRegex(format!("invalid regex: {}", err)))?,
+                .map_err(|err| Error::DeviceRegex(format!("invalid regex: {}", err)))?,
         })
     }
 }
 
 #[derive(Debug)]
+/// TODO: add docs
 pub struct EnvRegex {
     var: String,
     regex: Regex,
@@ -136,6 +153,7 @@ impl TryFrom<&str> for EnvRegex {
 }
 
 #[derive(Debug)]
+/// TODO: add docs
 pub struct MajMin {
     maj: u8,
     min: u8,
@@ -170,8 +188,11 @@ impl TryFrom<&str> for MajMin {
 }
 
 #[derive(Debug)]
+/// Contains the user and group names
 pub struct UserGroup {
+    /// Name of the user
     user: String,
+    /// Name of the group
     group: String,
 }
 
@@ -196,7 +217,9 @@ impl TryFrom<&str> for UserGroup {
 }
 
 #[derive(Debug)]
+/// Contains the access mode or permissions
 pub struct Mode {
+    /// Permissions, each value is between `b'0'` and `b'7'`
     mode: [u8; 3],
 }
 
@@ -211,6 +234,7 @@ impl TryFrom<&str> for Mode {
     }
 }
 
+/// Parses every line of the configuration contained in `input` excluding invalid ones.
 pub fn parse(input: &str) -> Vec<Conf> {
     input
         .lines()
