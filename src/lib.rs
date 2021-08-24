@@ -96,20 +96,25 @@ impl TryFrom<&str> for Conf {
             .ok_or_else(|| Error::Mode("missing".into()))?
             .try_into()?;
 
-        let on_creation = match parts.next() {
-            None => None,
-            Some(s) => Some(s.try_into()?),
-        };
+        let mut on_creation = None;
+        let mut command = None;
 
-        // TODO: check if regex gruops referenced in on_creation match the one on filter
-
-        let command = match parts.next() {
-            None => None,
-            Some(s) => {
-                let mut command = Command::try_from(s)?;
-                command.args.extend(parts.map(|s| s.into()));
-                Some(command)
-            }
+        if let Some(s) = parts.next() {
+            let (next, error) = match OnCreation::try_from(s) {
+                Err(e) => (Some(s), Some(e)),
+                Ok(v) => {
+                    on_creation = Some(v);
+                    (parts.next(), None)
+                }
+            };
+            match next.map(Command::try_from) {
+                None => (),
+                Some(Err(e)) => return Err(error.unwrap_or(e)),
+                Some(Ok(mut cmd)) => {
+                    cmd.args.extend(parts.map(String::from));
+                    command = Some(cmd);
+                }
+            };
         };
 
         Ok(Conf {
