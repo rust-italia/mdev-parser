@@ -1,4 +1,3 @@
-
 use regex::Regex;
 
 use tracing::error;
@@ -20,53 +19,66 @@ pub struct DevicenameRegex {
 #[derive(Debug)]
 pub struct EnvRegex {
     //var: String,
-    //regex: Regex,
+//regex: Regex,
 }
 
 #[derive(Debug)]
 pub struct MajMin {
     //maj: String,
-    //min: String,
-    //min2: Option<String>,
+//min: String,
+//min2: Option<String>,
 }
 
 pub fn parse(input: &str) -> Vec<Conf> {
-    input.lines().filter_map(|s| {
-        let first_char = s.chars().next();
-        if first_char.is_none() || first_char == Some('#') {
-            return None;
-        }
+    input
+        .lines()
+        .filter_map(|s| {
+            // Exclude comments
+            if s.chars().next()? == '#' {
+                return None;
+            }
 
-        let mut parts = s.split_whitespace();
-        let first_part = parts.next()?;//auto-check for empty strings
-        let mut first_part_c = first_part.chars().peekable();
-        let dash = if first_part_c.peek() == Some(&'-') {
-            first_part_c.next();
-            true
-        }
-        else {
-            false
-        };
+            let mut parts = s.split_whitespace();
+            let first_part = parts.next()?; //auto-check for empty strings
+            let mut first_part_c = first_part.chars().peekable();
+            let dash = if first_part_c.peek() == Some(&'-') {
+                first_part_c.next();
+                true
+            } else {
+                false
+            };
 
-        let filter = match first_part_c.peek() {
-            Some('@') => Filter::MajMin(dash, MajMin {
-                //TODO
-            }),
-            Some('$') => Filter::EnvRegex(dash, EnvRegex {
-                //TODO
-            }),
-            _ => Filter::DevicenameRegex(dash, DevicenameRegex {
-                regex: Regex::new(&first_part_c.collect::<String>()).map_err(|e| error!("Regex parse error: {}", e)).ok()?,
-            }),
-        };
-        
-        let user_group = parts.next()?;//TODO: parse user:group
-        let mode = parts.next()?;//TODO: parse mode
-        
-        //TODO: optional parts
+            let filter = match first_part_c.peek() {
+                Some('@') => Filter::MajMin(
+                    dash,
+                    MajMin {
+                        //TODO
+                    },
+                ),
+                Some('$') => Filter::EnvRegex(
+                    dash,
+                    EnvRegex {
+                        //TODO
+                    },
+                ),
+                _ => Filter::DevicenameRegex(
+                    dash,
+                    DevicenameRegex {
+                        regex: Regex::new(&first_part_c.collect::<String>())
+                            .map_err(|e| error!("Regex parse error: {}", e))
+                            .ok()?,
+                    },
+                ),
+            };
 
-        Some((filter, user_group, mode))
-    }).collect()
+            let user_group = parts.next()?; //TODO: parse user:group
+            let mode = parts.next()?; //TODO: parse mode
+
+            //TODO: optional parts
+
+            Some((filter, user_group, mode))
+        })
+        .collect()
 }
 
 #[cfg(test)]
