@@ -19,19 +19,17 @@ impl TryFrom<&str> for Conf {
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         let mut parts = s.split_whitespace();
-        let mut first_part = parts.next().ok_or(())?.chars().peekable();
-        let stop = first_part.next_if_eq(&'-').is_some();
 
-        let filter = match first_part.peek() {
-            Some('@') => {
-                first_part.next();
-                Filter::MajMin(first_part.collect::<String>().as_str().try_into()?)
-            }
-            Some('$') => {
-                first_part.next();
-                Filter::EnvRegex(first_part.collect::<String>().as_str().try_into()?)
-            }
-            _ => Filter::DevicenameRegex(first_part.collect::<String>().as_str().try_into()?),
+        let mut first_part = parts.next().ok_or(())?;
+        let stop = first_part.bytes().next() == Some(b'-');
+        if stop {
+            first_part = &first_part[1..];
+        }
+
+        let filter = match first_part.bytes().next() {
+            Some(b'@') => Filter::MajMin(first_part[1..].try_into()?),
+            Some(b'$') => Filter::EnvRegex(first_part[1..].try_into()?),
+            _ => Filter::DevicenameRegex(first_part.try_into()?),
         };
 
         let user_group = parts.next().ok_or(())?.try_into()?;
@@ -64,8 +62,8 @@ impl TryFrom<&str> for DevicenameRegex {
     type Error = Error;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
-        Ok(DevicenameRegex {
-            regex: Regex::new(s).map_err(|e| error!("Regex parse error: {}", e))?,
+        Ok(Self {
+            regex: Regex::new(s).or(Err(()))?,
         })
     }
 }
@@ -150,7 +148,7 @@ impl TryFrom<&str> for Mode {
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         match *s.as_bytes() {
-            [a @ b'0'..=b'7', b @ b'0'..=b'7', c @ b'0'..=b'7'] => Ok(Mode { mode: [a, b, c] }),
+            [a @ b'0'..=b'7', b @ b'0'..=b'7', c @ b'0'..=b'7'] => Ok(Self { mode: [a, b, c] }),
             _ => Err(()),
         }
     }
