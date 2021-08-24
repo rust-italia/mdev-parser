@@ -25,6 +25,8 @@ pub enum ParsingError {
     EnvRegex(String),
     /// The user group is invalid
     UserGroup(String),
+    /// The on creation instruction is invalid
+    OnCreation(String),
 }
 
 impl Display for ParsingError {
@@ -37,6 +39,7 @@ impl Display for ParsingError {
             Self::Mode(err) => write!(f, "mode error: {}", err),
             Self::EnvRegex(err) => write!(f, "env var regex error: {}", err),
             Self::UserGroup(err) => write!(f, "user and/or group error: {}", err),
+            Self::OnCreation(err) => write!(f, "on creation instruction error: {}", err),
         }
     }
 }
@@ -56,6 +59,9 @@ pub struct Conf {
     user_group: UserGroup,
     /// Permissions that the specified user and group have on the device
     mode: Mode,
+    /// What to do with the device node, if [`None`] it gets placed in `/dev/` with its
+    /// original name
+    on_creation: Option<OnCreation>,
 }
 
 impl TryFrom<&str> for Conf {
@@ -90,6 +96,11 @@ impl TryFrom<&str> for Conf {
             .ok_or_else(|| Error::Mode("missing".into()))?
             .try_into()?;
 
+        let on_creation = match parts.next() {
+            None => None,
+            Some(s) => Some(s.try_into()?),
+        };
+
         //TODO: optional parts
 
         Ok(Conf {
@@ -97,6 +108,7 @@ impl TryFrom<&str> for Conf {
             filter,
             user_group,
             mode,
+            on_creation,
         })
     }
 }
@@ -141,7 +153,7 @@ impl TryFrom<&str> for EnvRegex {
         let (var, regex) = s
             .split_once('=')
             .ok_or_else(|| Error::EnvRegex("missing value".into()))?;
-        if var.chars().any(char::is_whitespace) {
+        if contains_whitespaces(var) {
             return Err(Error::EnvRegex("env var contains white spaces".into()));
         }
         Ok(Self {
@@ -203,10 +215,10 @@ impl TryFrom<&str> for UserGroup {
         let (user, group) = s
             .split_once(":")
             .ok_or_else(|| Error::UserGroup("missing group".into()))?;
-        if user.chars().any(char::is_whitespace) {
+        if contains_whitespaces(user) {
             return Err(Error::UserGroup("user name contains white spaces".into()));
         }
-        if group.chars().any(char::is_whitespace) {
+        if contains_whitespaces(group) {
             return Err(Error::UserGroup("group name contains white spaces".into()));
         }
         Ok(Self {
@@ -234,6 +246,34 @@ impl TryFrom<&str> for Mode {
     }
 }
 
+#[derive(Debug)]
+/// Additional actions to take on creation of the device node
+pub enum OnCreation {
+    /// Moves/renames the device
+    Move(String),
+    /// Same as [`OnCreation::Move`] but also creates a symlink in `/dev/` to the
+    /// renamed/moved device
+    SymLink(String),
+    /// Prevents the creation of the device node
+    Prevent,
+}
+
+impl TryFrom<&str> for OnCreation {
+    type Error = Error;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        match s.bytes().next() {
+            Some(b'=') | Some(b'>') if contains_whitespaces(&s[1..]) => {
+                Err(Error::OnCreation("path contains whitespaces".into()))
+            }
+            Some(b'=') => Ok(Self::Move(s[1..].into())),
+            Some(b'>') => Ok(Self::SymLink(s[1..].into())),
+            Some(b'!') if s.len() == 1 => Ok(Self::Prevent),
+            _ => Err(Error::OnCreation("invalid symbol".into())),
+        }
+    }
+}
+
 /// Parses every line of the configuration contained in `input` excluding invalid ones.
 pub fn parse(input: &str) -> Vec<Conf> {
     input
@@ -247,6 +287,10 @@ pub fn parse(input: &str) -> Vec<Conf> {
             }
         })
         .collect()
+}
+
+fn contains_whitespaces(s: &str) -> bool {
+    s.chars().any(char::is_whitespace)
 }
 
 #[cfg(test)]
