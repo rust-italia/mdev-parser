@@ -15,18 +15,20 @@ pub enum ParsingError {
     Empty,
     /// The line is a comment
     Comment,
-    /// The device name regex is invalid
+    /// The [`DeviceRegex`] is invalid
     DeviceRegex(String),
-    /// The version is invalid
+    /// The [`MajMin`] is invalid
     MajMin(String),
-    /// The mode is invalid
+    /// The [`Mode`] is invalid
     Mode(String),
-    /// The env var regex is invalid
+    /// The [`EnvRegex`] is invalid
     EnvRegex(String),
-    /// The user group is invalid
+    /// The [`UserGroup`] is invalid
     UserGroup(String),
-    /// The on creation instruction is invalid
+    /// The [`OnCreation`] instruction is invalid
     OnCreation(String),
+    /// The [`Command`] is invalid
+    Command(String),
 }
 
 impl Display for ParsingError {
@@ -40,6 +42,7 @@ impl Display for ParsingError {
             Self::EnvRegex(err) => write!(f, "env var regex error: {}", err),
             Self::UserGroup(err) => write!(f, "user and/or group error: {}", err),
             Self::OnCreation(err) => write!(f, "on creation instruction error: {}", err),
+            Self::Command(err) => write!(f, "command error: {}", err),
         }
     }
 }
@@ -62,6 +65,8 @@ pub struct Conf {
     /// What to do with the device node, if [`None`] it gets placed in `/dev/` with its
     /// original name
     on_creation: Option<OnCreation>,
+    /// Additional command that has to be executed when creating and/or removing the node
+    command: Option<Command>,
 }
 
 impl TryFrom<&str> for Conf {
@@ -79,7 +84,6 @@ impl TryFrom<&str> for Conf {
         if stop {
             first_part = &first_part[1..];
         }
-
         let filter = first_part.try_into()?;
 
         let user_group = parts
@@ -99,7 +103,14 @@ impl TryFrom<&str> for Conf {
 
         // TODO: check if regex gruops referenced in on_creation match the one on filter
 
-        //TODO: optional parts
+        let command = match parts.next() {
+            None => None,
+            Some(s) => {
+                let mut command = Command::try_from(s)?;
+                command.args.extend(parts.map(|s| s.into()));
+                Some(command)
+            }
+        };
 
         Ok(Conf {
             stop,
@@ -107,6 +118,7 @@ impl TryFrom<&str> for Conf {
             user_group,
             mode,
             on_creation,
+            command,
         })
     }
 }
@@ -281,6 +293,43 @@ impl TryFrom<&str> for OnCreation {
             Some(b'!') if s.len() == 1 => Ok(Self::Prevent),
             _ => Err(Error::OnCreation("invalid symbol".into())),
         }
+    }
+}
+
+#[derive(Debug)]
+/// When to run the [`Command`]
+pub enum WhenToRun {
+    /// After creating the device
+    After,
+    /// Before removing te device
+    Before,
+    /// Both after the creation and before removing
+    Both,
+}
+
+#[derive(Debug)]
+pub struct Command {
+    /// When to run the command
+    when: WhenToRun,
+    /// Path to the executable
+    path: String,
+    /// Command line arguments
+    args: Vec<String>,
+}
+
+impl TryFrom<&str> for Command {
+    type Error = Error;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        let when = match s.bytes().next() {
+            Some(b'@') => WhenToRun::After,
+            Some(b'$') => WhenToRun::Before,
+            Some(b'*') => WhenToRun::Both,
+            _ => return Err(Error::Command("invalid start flag".into())),
+        };
+        let path = s[1..].into();
+        let args = Vec::new();
+        Ok(Self { when, path, args })
     }
 }
 
