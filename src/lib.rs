@@ -2,7 +2,13 @@ use regex::Regex;
 
 use tracing::error;
 
-type Conf<'a> = (bool, Filter, &'a str, &'a str);
+#[derive(Debug)]
+pub struct Conf<'a> {
+    stop: bool,
+    filter: Filter,
+    user_group: &'a str,
+    mode: &'a str,
+}
 
 #[derive(Debug)]
 pub enum Filter {
@@ -67,7 +73,12 @@ pub fn parse(input: &str) -> Vec<Conf> {
 
             //TODO: optional parts
 
-            Some((dash, filter, user_group, mode))
+            Some(Conf {
+                stop: dash,
+                filter,
+                user_group,
+                mode,
+            })
         })
         .collect()
 }
