@@ -7,17 +7,17 @@ use tracing::error;
 type Error = ();
 
 #[derive(Debug)]
-pub struct Conf<'a> {
+pub struct Conf {
     stop: bool,
     filter: Filter,
     user_group: UserGroup,
-    mode: &'a str,
+    mode: Mode,
 }
 
-impl<'a> TryFrom<&'a str> for Conf<'a> {
+impl TryFrom<&str> for Conf {
     type Error = Error;
 
-    fn try_from(s: &'a str) -> Result<Self, Self::Error> {
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
         let mut parts = s.split_whitespace();
         let mut first_part = parts.next().ok_or(())?.chars().peekable();
         let stop = first_part.next_if_eq(&'-').is_some();
@@ -36,7 +36,7 @@ impl<'a> TryFrom<&'a str> for Conf<'a> {
         let user_group = parts.next().ok_or(())?.try_into()?;
 
         // TODO: parse mode
-        let mode = parts.next().ok_or(())?;
+        let mode = parts.next().ok_or(())?.try_into()?;
 
         //TODO: optional parts
 
@@ -105,6 +105,22 @@ impl TryFrom<&str> for UserGroup {
             user: user.into(),
             group: group.into(),
         })
+    }
+}
+
+#[derive(Debug)]
+pub struct Mode {
+    mode: [u8; 3],
+}
+
+impl TryFrom<&str> for Mode {
+    type Error = Error;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        match *s.as_bytes() {
+            [a @ b'0'..=b'7', b @ b'0'..=b'7', c @ b'0'..=b'7'] => Ok(Mode { mode: [a, b, c] }),
+            _ => Err(()),
+        }
     }
 }
 
