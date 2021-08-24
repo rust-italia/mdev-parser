@@ -23,9 +23,10 @@ impl TryFrom<&str> for Conf {
         let stop = first_part.next_if_eq(&'-').is_some();
 
         let filter = match first_part.peek() {
-            Some('@') => Filter::MajMin(MajMin {
-                //TODO
-            }),
+            Some('@') => {
+                first_part.next();
+                Filter::MajMin(first_part.collect::<String>().as_str().try_into()?)
+            }
             Some('$') => Filter::EnvRegex(EnvRegex {
                 //TODO
             }),
@@ -79,9 +80,27 @@ pub struct EnvRegex {
 
 #[derive(Debug)]
 pub struct MajMin {
-    //maj: String,
-//min: String,
-//min2: Option<String>,
+    maj: u8,
+    min: u8,
+    min2: Option<u8>,
+}
+
+impl TryFrom<&str> for MajMin {
+    type Error = Error;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        let (maj, mut min) = s.split_once(',').ok_or(())?;
+        let mut min2 = None;
+        if let Some((m, m2)) = min.split_once('-') {
+            min = m;
+            min2 = Some(m2.parse().or(Err(()))?);
+        }
+        Ok(Self {
+            maj: maj.parse().or(Err(()))?,
+            min: min.parse().or(Err(()))?,
+            min2,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -253,6 +272,6 @@ SUBSYSTEM=usb;DEVTYPE=usb_device;.* root:root 660 */opt/mdev/helpers/dev-bus-usb
 # Catch-all other devices, Right now useful only for debuging.
 #.* root:root 660 */opt/mdev/helpers/catch-all
 "#;
-        println!("{:?}", super::parse(input));
+        println!("{:#?}", super::parse(input));
     }
 }
