@@ -1,3 +1,7 @@
+#[macro_use]
+extern crate pest_derive;
+use pest::{iterators::Pair, Parser};
+
 use std::{
     convert::{TryFrom, TryInto},
     error::Error as StdError,
@@ -7,7 +11,7 @@ use std::{
 
 use regex::Regex;
 
-use tracing::error;
+use tracing::{error, field::debug};
 
 #[derive(Debug)]
 /// Enumeration of all the errors that can happen while parsing a configuration line
@@ -52,6 +56,10 @@ impl StdError for ParsingError {}
 
 type Error = ParsingError;
 
+#[derive(Parser)]
+#[grammar = "../assets/conf_grammar.pest"]
+struct ConfParser;
+
 #[derive(Debug)]
 /// A line in the configuration file
 pub struct Conf {
@@ -68,65 +76,6 @@ pub struct Conf {
     on_creation: Option<OnCreation>,
     /// Additional command that has to be executed when creating and/or removing the node
     command: Option<Command>,
-}
-
-impl TryFrom<&str> for Conf {
-    type Error = Error;
-
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
-        if s.starts_with('#') {
-            return Err(Error::Comment);
-        }
-
-        let mut parts = s.split_whitespace();
-
-        let mut first_part = parts.next().ok_or(Error::Empty)?;
-        let stop = first_part.bytes().next() != Some(b'-');
-        if !stop {
-            first_part = &first_part[1..];
-        }
-        let filter = first_part.try_into()?;
-
-        let user_group = parts
-            .next()
-            .ok_or_else(|| Error::UserGroup("missing".into()))?
-            .try_into()?;
-
-        let mode = parts
-            .next()
-            .ok_or_else(|| Error::Mode("missing".into()))?
-            .try_into()?;
-
-        let mut on_creation = None;
-        let mut command = None;
-
-        if let Some(s) = parts.next() {
-            let (next, error) = match OnCreation::try_from(s) {
-                Err(e) => (Some(s), Some(e)),
-                Ok(v) => {
-                    on_creation = Some(v);
-                    (parts.next(), None)
-                }
-            };
-            match next.map(Command::try_from) {
-                None => (),
-                Some(Err(e)) => return Err(error.unwrap_or(e)),
-                Some(Ok(mut cmd)) => {
-                    cmd.args.extend(parts.map(String::from));
-                    command = Some(cmd);
-                }
-            };
-        };
-
-        Ok(Conf {
-            stop,
-            filter,
-            user_group,
-            mode,
-            on_creation,
-            command,
-        })
-    }
 }
 
 impl Display for Conf {
@@ -181,34 +130,11 @@ pub enum Filter {
     MajMin(MajMin),
 }
 
-impl TryFrom<&str> for Filter {
-    type Error = Error;
-
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
-        Ok(match s.bytes().next() {
-            Some(b'@') => Self::MajMin(s[1..].try_into()?),
-            Some(b'$') => Self::EnvRegex(s[1..].try_into()?),
-            _ => Self::DeviceRegex(s.try_into()?),
-        })
-    }
-}
-
 #[derive(Debug)]
 /// A regex used for matching devices based on their names
 pub struct DeviceRegex {
     /// [`Regex`] used for matching
     regex: Regex,
-}
-
-impl TryFrom<&str> for DeviceRegex {
-    type Error = Error;
-
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
-        Ok(Self {
-            regex: Regex::new(s)
-                .map_err(|err| Error::DeviceRegex(format!("invalid regex: {}", err)))?,
-        })
-    }
 }
 
 #[derive(Debug)]
@@ -218,57 +144,12 @@ pub struct EnvRegex {
     regex: Regex,
 }
 
-impl TryFrom<&str> for EnvRegex {
-    type Error = Error;
-
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
-        let (var, regex) = s
-            .split_once('=')
-            .ok_or_else(|| Error::EnvRegex("missing value".into()))?;
-        if contains_whitespaces(var) {
-            return Err(Error::EnvRegex("env var contains white spaces".into()));
-        }
-        Ok(Self {
-            var: var.into(),
-            regex: Regex::new(regex)
-                .map_err(|err| Error::EnvRegex(format!("invalid regex: {}", err)))?,
-        })
-    }
-}
-
 #[derive(Debug)]
 /// TODO: add docs
 pub struct MajMin {
     maj: u8,
     min: u8,
     min2: Option<u8>,
-}
-
-impl TryFrom<&str> for MajMin {
-    type Error = Error;
-
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
-        let (maj, mut min) = s
-            .split_once(',')
-            .ok_or_else(|| Error::MajMin("missing min".into()))?;
-        let mut min2 = None;
-        if let Some((m, m2)) = min.split_once('-') {
-            min = m;
-            min2 = Some(
-                m2.parse()
-                    .map_err(|_| Error::MajMin("invalid min2".into()))?,
-            );
-        }
-        Ok(Self {
-            maj: maj
-                .parse()
-                .map_err(|_| Error::MajMin("invalid maj".into()))?,
-            min: min
-                .parse()
-                .map_err(|_| Error::MajMin("invalid min".into()))?,
-            min2,
-        })
-    }
 }
 
 #[derive(Debug)]
@@ -280,42 +161,11 @@ pub struct UserGroup {
     group: String,
 }
 
-impl TryFrom<&str> for UserGroup {
-    type Error = Error;
-
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
-        let (user, group) = s
-            .split_once(":")
-            .ok_or_else(|| Error::UserGroup("missing group".into()))?;
-        if contains_whitespaces(user) {
-            return Err(Error::UserGroup("user name contains white spaces".into()));
-        }
-        if contains_whitespaces(group) {
-            return Err(Error::UserGroup("group name contains white spaces".into()));
-        }
-        Ok(Self {
-            user: user.into(),
-            group: group.into(),
-        })
-    }
-}
-
 #[derive(Debug)]
 /// Contains the access mode or permissions
 pub struct Mode {
     /// Permissions, each value is between `b'0'` and `b'7'`
     mode: [u8; 3],
-}
-
-impl TryFrom<&str> for Mode {
-    type Error = Error;
-
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
-        match *s.as_bytes() {
-            [a @ b'0'..=b'7', b @ b'0'..=b'7', c @ b'0'..=b'7'] => Ok(Self { mode: [a, b, c] }),
-            _ => Err(Error::Mode("invalid value".into())),
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -328,22 +178,6 @@ pub enum OnCreation {
     SymLink(String),
     /// Prevents the creation of the device node
     Prevent,
-}
-
-impl TryFrom<&str> for OnCreation {
-    type Error = Error;
-
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
-        match s.bytes().next() {
-            Some(b'=') | Some(b'>') if contains_whitespaces(&s[1..]) => {
-                Err(Error::OnCreation("path contains whitespaces".into()))
-            }
-            Some(b'=') => Ok(Self::Move(s[1..].into())),
-            Some(b'>') => Ok(Self::SymLink(s[1..].into())),
-            Some(b'!') if s.len() == 1 => Ok(Self::Prevent),
-            _ => Err(Error::OnCreation("invalid symbol".into())),
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -367,35 +201,9 @@ pub struct Command {
     args: Vec<String>,
 }
 
-impl TryFrom<&str> for Command {
-    type Error = Error;
-
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
-        let when = match s.bytes().next() {
-            Some(b'@') => WhenToRun::After,
-            Some(b'$') => WhenToRun::Before,
-            Some(b'*') => WhenToRun::Both,
-            _ => return Err(Error::Command("invalid start flag".into())),
-        };
-        let path = s[1..].into();
-        let args = Vec::new();
-        Ok(Self { when, path, args })
-    }
-}
-
 /// Parses every line of the configuration contained in `input` excluding invalid ones.
 pub fn parse(input: &str) -> Vec<Conf> {
-    input
-        .lines()
-        .filter_map(|s| match s.try_into() {
-            Ok(v) => Some(v),
-            Err(Error::Comment) | Err(Error::Empty) => None,
-            Err(err) => {
-                error!("parsing error: {}", err);
-                None
-            }
-        })
-        .collect()
+    Vec::new()
 }
 
 fn contains_whitespaces(s: &str) -> bool {
