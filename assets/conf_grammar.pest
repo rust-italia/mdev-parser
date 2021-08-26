@@ -1,0 +1,49 @@
+u8 = @{
+    // Up until 199 not much to limit
+    '0'..'9' | ('1'..'9' ~ '0'..'9') | ("1" ~ '0'..'9' ~ '0'..'9')
+    // Then for 2xx before 50 allow 0..9, but after that the maximum is 5 
+    | ("2" ~ (('0'..'4' ~ '0'..'9') | ("5" ~ '0'..'5')))
+}
+majmin = ${ "@" ~ u8 ~ "," ~ u8 ~ ("-" ~ u8)? }
+
+regex = @{ (!WHITESPACE ~ !";" ~ ASCII)+ }
+
+envvar = @{ (ASCII_ALPHA_UPPER ~ (ASCII_ALPHA_UPPER | "_")*) ~ "=" }
+
+stop = { "-" }
+
+env_match = ${ envvar ~ regex ~ ";" }
+
+device_regex = ${ ("$" ~ envvar)? ~ regex }
+
+name = @{ ASCII_ALPHA+ }
+usergroup = { name ~ ":" ~ name }
+
+mode = { '0'..'7'{3} }
+
+// TODO: maybe find a better definition
+path_char = _{ !"/" ~ !"\x00" ~ ANY }
+path = @{ (path_char+ ~ "/")* ~ path_char+? }
+
+move_to = ${ "=" ~ path }
+symlink = ${ ">" ~ path }
+prevent = { "!" }
+on_creation = ${ move_to | symlink | prevent }
+
+after = { "@" }
+before = { "$" }
+both = { "*" }
+when = { after | before | both }
+
+exec = ${ when ~ "/" ~ path }
+arg = @{ (!WHITESPACE ~ !NEWLINE ~ ASCII)+ }
+command = { exec ~ arg* }
+
+// matcher is separated to apply the $ modifier
+matcher = ${ stop? ~ env_match* ~ (majmin | device_regex) }
+rule = { matcher ~ usergroup ~ mode ~ on_creation? ~ command? }
+comment = ${ "#" ~ (" " ~ ANY*)? }
+empty = { WHITESPACE* }
+line = { (comment | rule | empty) ~ NEWLINE? }
+
+WHITESPACE = _{ " " | "\t" }
