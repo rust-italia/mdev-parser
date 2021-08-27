@@ -1,10 +1,11 @@
 u8 = @{
-    // Up until 199 not much to limit
-    '0'..'9' | ('1'..'9' ~ '0'..'9') | ("1" ~ '0'..'9' ~ '0'..'9')
-    // Then for 2xx before 50 allow 0..9, but after that the maximum is 5 
-    | ("2" ~ (('0'..'4' ~ '0'..'9') | ("5" ~ '0'..'5')))
+    ("25" ~ '0'..'5') |
+    ("2" ~ '0'..'4' ~ ASCII_DIGIT) |
+    ("1" ~ ASCII_DIGIT{2} ) | 
+    (ASCII_NONZERO_DIGIT ~ ASCII_DIGIT) |
+    ASCII_DIGIT
 }
-majmin = ${ "@" ~ u8 ~ "," ~ u8 ~ ("-" ~ u8)? }
+majmin = ${ "@" ~ u8 ~ "," ~ u8 ~ (("-" ~ u8) | !"-") }
 
 regex = @{ (!WHITESPACE ~ !";" ~ ASCII)+ }
 
@@ -14,7 +15,7 @@ stop = { "-" }
 
 env_match = ${ envvar ~ "=" ~ regex ~ ";" }
 
-device_regex = ${ ("$" ~ envvar ~ "=")? ~ regex }
+device_regex = ${ (("$" ~ envvar ~ "=") | !"$") ~ regex }
 
 name = @{ ASCII_ALPHA+ }
 usergroup = { name ~ ":" ~ name }
@@ -22,8 +23,8 @@ usergroup = { name ~ ":" ~ name }
 mode = { '0'..'7'{3} }
 
 // TODO: maybe find a better definition
-path_char = _{ !"/" ~ !"\x00" ~ ANY }
-path = @{ (path_char+ ~ "/")* ~ path_char+? }
+path_char = _{ !"/" ~ !"\x00" ~ !WHITESPACE ~ ANY }
+path = @{ "/"? ~ (path_char+ ~ "/")* ~ path_char+? }
 
 move_to = ${ "=" ~ path }
 symlink = ${ ">" ~ path }
@@ -35,15 +36,15 @@ before = { "$" }
 both = { "*" }
 when = { after | before | both }
 
-exec = ${ when ~ "/" ~ path }
+exec = ${ when ~ path }
 arg = @{ (!WHITESPACE ~ !NEWLINE ~ ASCII)+ }
 command = { exec ~ arg* }
 
 // matcher is separated to apply the $ modifier
-matcher = ${ stop? ~ env_match* ~ (majmin | device_regex) }
+matcher = ${ stop? ~ env_match* ~ ((!"@" ~ device_regex) | majmin) }
 rule = { matcher ~ usergroup ~ mode ~ on_creation? ~ command? }
-comment = ${ "#" ~ (" " ~ ANY*)? }
-empty = { WHITESPACE* }
-line = { (comment | rule | empty) ~ NEWLINE? }
+comment = ${ "#" ~ ANY* ~ (NEWLINE | EOI) }
+empty = { WHITESPACE* ~ (NEWLINE | EOI) }
+line = { (comment | empty | (rule ~ (NEWLINE | EOI))) }
 
 WHITESPACE = _{ " " | "\t" }

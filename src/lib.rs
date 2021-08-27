@@ -51,7 +51,7 @@ impl Conf {
         let filter = match filter.as_rule() {
             Rule::majmin => Filter::MajMin(MajMin::from_rule(filter)),
             Rule::device_regex => Filter::DeviceRegex(DeviceRegex::from_rule(filter)?),
-            r => unreachable!("{:?}", r),
+            _ => unreachable!(),
         };
         let user_group = UserGroup::from_rule(conf.next().unwrap());
         let mode = Mode::from_rule(conf.next().unwrap());
@@ -113,12 +113,12 @@ impl Display for Conf {
             }?;
         }
         if let Some(command) = &self.command {
-            match command.when {
-                WhenToRun::After => write!(f, " @"),
-                WhenToRun::Before => write!(f, " $"),
-                WhenToRun::Both => write!(f, " *"),
-            }?;
-            write!(f, "{}", command.path)?;
+            let when = match command.when {
+                WhenToRun::After => '@',
+                WhenToRun::Before => '$',
+                WhenToRun::Both => '*',
+            };
+            write!(f, " {}{}", when, command.path)?;
             for arg in &command.args {
                 write!(f, " {}", arg)?;
             }
