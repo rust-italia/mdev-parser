@@ -1,60 +1,9 @@
 #[macro_use]
 extern crate pest_derive;
 use pest::{iterators::Pair, Parser};
-
-use std::{
-    convert::{TryFrom, TryInto},
-    error::Error as StdError,
-    fmt::Display,
-    str::from_utf8,
-};
-
 use regex::Regex;
-
-use tracing::{error, field::debug};
-
-#[derive(Debug)]
-/// Enumeration of all the errors that can happen while parsing a configuration line
-pub enum ParsingError {
-    /// The line is empty
-    Empty,
-    /// The line is a comment
-    Comment,
-    /// The [`DeviceRegex`] is invalid
-    DeviceRegex(String),
-    /// The [`MajMin`] is invalid
-    MajMin(String),
-    /// The [`Mode`] is invalid
-    Mode(String),
-    /// The [`EnvRegex`] is invalid
-    EnvRegex(String),
-    /// The [`UserGroup`] is invalid
-    UserGroup(String),
-    /// The [`OnCreation`] instruction is invalid
-    OnCreation(String),
-    /// The [`Command`] is invalid
-    Command(String),
-}
-
-impl Display for ParsingError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Empty => write!(f, "empty line"),
-            Self::Comment => write!(f, "comment line"),
-            Self::DeviceRegex(err) => write!(f, "devicename regex error: {}", err),
-            Self::MajMin(err) => write!(f, "version error: {}", err),
-            Self::Mode(err) => write!(f, "mode error: {}", err),
-            Self::EnvRegex(err) => write!(f, "env var regex error: {}", err),
-            Self::UserGroup(err) => write!(f, "user and/or group error: {}", err),
-            Self::OnCreation(err) => write!(f, "on creation instruction error: {}", err),
-            Self::Command(err) => write!(f, "command error: {}", err),
-        }
-    }
-}
-
-impl StdError for ParsingError {}
-
-type Error = ParsingError;
+use std::{convert::TryInto, fmt::Display, str::from_utf8};
+use tracing::error;
 
 #[derive(Parser)]
 #[grammar = "../assets/conf_grammar.pest"]
@@ -217,20 +166,13 @@ pub struct MajMin {
 }
 
 impl MajMin {
-    fn from_rule_inner(v: Pair<'_, Rule>) -> Option<Self> {
+    fn from_rule(v: Pair<'_, Rule>) -> Self {
         debug_assert_eq!(v.as_rule(), Rule::majmin);
         let mut majmin = v.into_inner();
-        let maj = u8_from_rule(majmin.next()?);
-        let min = u8_from_rule(majmin.next()?);
+        let maj = u8_from_rule(majmin.next().unwrap());
+        let min = u8_from_rule(majmin.next().unwrap());
         let min2 = majmin.next().map(u8_from_rule);
-        Some(Self { maj, min, min2 })
-    }
-
-    fn from_rule(v: Pair<'_, Rule>) -> Self {
-        match Self::from_rule_inner(v) {
-            Some(v) => v,
-            None => unreachable!(),
-        }
+        Self { maj, min, min2 }
     }
 }
 
@@ -328,21 +270,14 @@ pub struct Command {
 }
 
 impl Command {
-    fn from_rule_inner(v: Pair<'_, Rule>) -> Option<Self> {
+    fn from_rule(v: Pair<'_, Rule>) -> Self {
         debug_assert_eq!(v.as_rule(), Rule::command);
         let mut command = v.into_inner();
-        let mut exec = command.next()?.into_inner();
-        let when = WhenToRun::from_rule(exec.next()?);
-        let path = path_from_rule(exec.next()?).into();
+        let mut exec = command.next().unwrap().into_inner();
+        let when = WhenToRun::from_rule(exec.next().unwrap());
+        let path = path_from_rule(exec.next().unwrap()).into();
         let args = command.map(arg_from_rule).map(String::from).collect();
-        Some(Self { when, path, args })
-    }
-
-    fn from_rule(v: Pair<'_, Rule>) -> Self {
-        match Self::from_rule_inner(v) {
-            Some(s) => s,
-            None => unreachable!(),
-        }
+        Self { when, path, args }
     }
 }
 
@@ -384,16 +319,12 @@ pub fn parse(input: &str) -> Vec<Conf> {
     input
         .lines()
         .map(|line| ConfParser::parse(Rule::line, line))
-        .filter_map(|res| res.map_err(|err| println!("parsing error: {}", err)).ok())
+        .filter_map(|res| res.map_err(|err| error!("parsing error: {}", err)).ok())
         .map(|mut v| v.next().unwrap().into_inner().next().unwrap())
         .filter(|r| r.as_rule() == Rule::rule)
         .map(Conf::from_rule)
-        .filter_map(|conf| conf.map_err(|err| println!("regex error: {}", err)).ok())
+        .filter_map(|conf| conf.map_err(|err| error!("regex error: {}", err)).ok())
         .collect()
-}
-
-fn contains_whitespaces(s: &str) -> bool {
-    s.chars().any(char::is_whitespace)
 }
 
 #[cfg(test)]
