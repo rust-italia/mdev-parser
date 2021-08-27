@@ -8,13 +8,13 @@ majmin = ${ "@" ~ u8 ~ "," ~ u8 ~ ("-" ~ u8)? }
 
 regex = @{ (!WHITESPACE ~ !";" ~ ASCII)+ }
 
-envvar = @{ (ASCII_ALPHA_UPPER ~ (ASCII_ALPHA_UPPER | "_")*) ~ "=" }
+envvar = @{ (ASCII_ALPHA_UPPER ~ (ASCII_ALPHA_UPPER | "_")*) }
 
 stop = { "-" }
 
-env_match = ${ envvar ~ regex ~ ";" }
+env_match = ${ envvar ~ "=" ~ regex ~ ";" }
 
-device_regex = ${ ("$" ~ envvar)? ~ regex }
+device_regex = ${ ("$" ~ envvar ~ "=")? ~ regex }
 
 name = @{ ASCII_ALPHA+ }
 usergroup = { name ~ ":" ~ name }
