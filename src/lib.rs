@@ -14,6 +14,7 @@ struct ConfParser;
 pub struct Conf {
     /// Wether to stop is this filter matches
     stop: bool,
+    envmatches: Vec<EnvMatch>,
     /// Filter used to match the devices
     filter: Filter,
     /// User and gruop that will own the device
@@ -41,8 +42,11 @@ impl Conf {
         if !stop {
             matcher.next();
         }
-        // TODO: envmatch
-        let mut matcher = matcher.skip_while(|r| r.as_rule() == Rule::env_match);
+        let mut envmatches = Vec::new();
+        while matcher.peek().unwrap().as_rule() == Rule::env_match {
+            let envmatch = EnvMatch::from_rule(matcher.next().unwrap())?;
+            envmatches.push(envmatch);
+        }
         let filter = matcher.next().unwrap();
         let filter = match filter.as_rule() {
             Rule::majmin => Filter::MajMin(MajMin::from_rule(filter)),
@@ -66,6 +70,7 @@ impl Conf {
         }
         Ok(Self {
             stop,
+            envmatches,
             filter,
             user_group,
             mode,
@@ -79,6 +84,9 @@ impl Display for Conf {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if !self.stop {
             write!(f, "-")?;
+        }
+        for envmatch in &self.envmatches {
+            write!(f, "{}={};", envmatch.envvar, envmatch.regex)?;
         }
         match &self.filter {
             Filter::DeviceRegex(DeviceRegex {
@@ -119,6 +127,22 @@ impl Display for Conf {
             }
         }
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct EnvMatch {
+    envvar: String,
+    regex: Regex,
+}
+
+impl EnvMatch {
+    fn from_rule(v: Pair<'_, Rule>) -> Result<Self, regex::Error> {
+        debug_assert_eq!(v.as_rule(), Rule::env_match);
+        let mut envmatch = v.into_inner();
+        let envvar = envvar_from_rule(envmatch.next().unwrap()).into();
+        let regex = regex_from_rule(envmatch.next().unwrap())?;
+        Ok(Self { envvar, regex })
     }
 }
 
