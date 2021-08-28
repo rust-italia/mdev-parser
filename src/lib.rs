@@ -56,18 +56,15 @@ impl Conf {
         let user_group = UserGroup::from_rule(conf.next().unwrap());
         let mode = Mode::from_rule(conf.next().unwrap());
 
-        let mut on_creation = None;
-        let mut command = None;
-        if let Some(next) = conf.next() {
-            match next.as_rule() {
-                Rule::on_creation => {
-                    on_creation = Some(OnCreation::from_rule(next));
-                    command = conf.next().map(Command::from_rule);
-                }
-                Rule::command => command = Some(Command::from_rule(next)),
-                _ => unreachable!(),
-            };
-        }
+        let (on_creation, command) = match conf.next() {
+            Some(next) if next.as_rule() == Rule::on_creation => (
+                Some(OnCreation::from_rule(next)),
+                conf.next().map(Command::from_rule),
+            ),
+            Some(next) if next.as_rule() == Rule::command => (None, Some(Command::from_rule(next))),
+            None => (None, None),
+            _ => unreachable!(),
+        };
         Ok(Self {
             stop,
             envmatches,
@@ -166,18 +163,15 @@ impl DeviceRegex {
         debug_assert_eq!(v.as_rule(), Rule::device_regex);
         let mut devregex = v.into_inner();
         let envvar = devregex.next().unwrap();
-        match envvar.as_rule() {
-            Rule::envvar => {
-                let envvar = Some(envvar_from_rule(envvar).into());
-                let regex = regex_from_rule(devregex.next().unwrap())?;
-                Ok(Self { envvar, regex })
-            }
-            Rule::regex => Ok(Self {
-                envvar: None,
-                regex: regex_from_rule(envvar)?,
-            }),
+        let (envvar, regex) = match envvar.as_rule() {
+            Rule::envvar => (
+                Some(envvar_from_rule(envvar).into()),
+                regex_from_rule(devregex.next().unwrap())?,
+            ),
+            Rule::regex => (None, regex_from_rule(envvar)?),
             _ => unreachable!(),
-        }
+        };
+        Ok(Self { envvar, regex })
     }
 }
 
@@ -340,15 +334,17 @@ fn u8_from_rule(v: Pair<'_, Rule>) -> u8 {
 
 /// Parses every line of the configuration contained in `input` excluding invalid ones.
 pub fn parse(input: &str) -> Vec<Conf> {
-    input
-        .lines()
-        .map(|line| ConfParser::parse(Rule::line, line))
-        .filter_map(|res| res.map_err(|err| error!("parsing error: {}", err)).ok())
-        .map(|mut v| v.next().unwrap().into_inner().next().unwrap())
-        .filter(|r| r.as_rule() == Rule::rule)
-        .map(Conf::from_rule)
-        .filter_map(|conf| conf.map_err(|err| error!("regex error: {}", err)).ok())
-        .collect()
+    let filter_map = |line| {
+        let mut v = ConfParser::parse(Rule::line, line)
+            .map_err(|err| error!("parsing error: {}", err))
+            .ok()?;
+        let rule = Some(v.next().unwrap().into_inner().next().unwrap())
+            .filter(|r| r.as_rule() == Rule::rule)?;
+        Conf::from_rule(rule)
+            .map_err(|err| error!("regex error: {}", err))
+            .ok()
+    };
+    input.lines().filter_map(filter_map).collect()
 }
 
 #[cfg(test)]
