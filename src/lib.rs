@@ -9,7 +9,7 @@ use tracing::error;
 #[grammar = "../assets/conf_grammar.pest"]
 struct ConfParser;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 /// A line in the configuration file
 pub struct Conf {
     /// Wether to stop is this filter matches
@@ -143,11 +143,29 @@ impl EnvMatch {
     }
 }
 
-#[derive(Debug)]
+impl PartialEq for EnvMatch {
+    fn eq(&self, other: &Self) -> bool {
+        self.envvar == other.envvar && self.regex.as_str() == other.regex.as_str()
+    }
+}
+
+#[derive(Debug, PartialEq)]
 /// Filter used for matching the devices
 pub enum Filter {
     DeviceRegex(DeviceRegex),
     MajMin(MajMin),
+}
+
+impl From<DeviceRegex> for Filter {
+    fn from(v: DeviceRegex) -> Self {
+        Self::DeviceRegex(v)
+    }
+}
+
+impl From<MajMin> for Filter {
+    fn from(v: MajMin) -> Self {
+        Self::MajMin(v)
+    }
 }
 
 #[derive(Debug)]
@@ -175,7 +193,13 @@ impl DeviceRegex {
     }
 }
 
-#[derive(Debug)]
+impl PartialEq for DeviceRegex {
+    fn eq(&self, other: &Self) -> bool {
+        self.envvar == other.envvar && self.regex.as_str() == other.regex.as_str()
+    }
+}
+
+#[derive(Debug, PartialEq)]
 /// TODO: add docs
 pub struct MajMin {
     maj: u8,
@@ -194,7 +218,7 @@ impl MajMin {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 /// Contains the user and group names
 pub struct UserGroup {
     /// Name of the user
@@ -213,7 +237,7 @@ impl UserGroup {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 /// Contains the access mode or permissions
 pub struct Mode {
     /// Permissions, each value is between `b'0'` and `b'7'`
@@ -228,7 +252,7 @@ impl Mode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 /// Additional actions to take on creation of the device node
 pub enum OnCreation {
     /// Moves/renames the device. If the path ends with `/` then the name will be stay the same
@@ -253,7 +277,7 @@ impl OnCreation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 /// When to run the [`Command`]
 pub enum WhenToRun {
     /// After creating the device
@@ -277,7 +301,7 @@ impl WhenToRun {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Command {
     /// When to run the command
     when: WhenToRun,
@@ -349,11 +373,145 @@ pub fn parse(input: &str) -> Vec<Conf> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    macro_rules! in_out_test {
+        ($($in:literal <===> $out:expr),* $(,)?) => {
+            const INPUT: &str = concat!($($in, "\n",)*);
+
+            fn outs() -> Vec<Conf> {
+                vec![$($out),*]
+            }
+        };
+    }
+
+    fn common_case(r: &str) -> Conf {
+        Conf {
+            stop: true,
+            envmatches: vec![],
+            filter: DeviceRegex {
+                envvar: None,
+                regex: regex(r),
+            }
+            .into(),
+            user_group: UserGroup {
+                user: "root".into(),
+                group: "root".into(),
+            },
+            mode: Mode { mode: *b"660" },
+            on_creation: None,
+            command: None,
+        }
+    }
+
+    fn regex(s: &str) -> Regex {
+        Regex::new(s).unwrap()
+    }
+
+    in_out_test! {
+        "SYSTEM=usb;DEVTYPE=usb_device;.*\troot:root\t660  */opt/dev-bus-usb" <===> Conf {
+            envmatches: vec![
+                EnvMatch { envvar: "SYSTEM".into(), regex: regex("usb") },
+                EnvMatch { envvar: "DEVTYPE".into(), regex: regex("usb_device") },
+            ],
+            command: Command {
+                when: WhenToRun::Both,
+                path: "/opt/dev-bus-usb".into(),
+                args: vec![],
+            }.into(),
+            ..common_case(".*")
+        },
+        "$MODALIAS=.*\troot:root\t660 @modprobe -b \"$MODALIAS\" " <===> Conf {
+            filter: DeviceRegex {
+                envvar: Some("MODALIAS".into()),
+                regex: regex(".*"),
+            }.into(),
+            command: Command {
+                when: WhenToRun::After,
+                path: "modprobe".into(),
+                args: vec!["-b".into(), "\"$MODALIAS\"".into()],
+            }.into(),
+            ..common_case(".*")
+        },
+        "@42,17-125 root:root 660" <===> Conf {
+            filter: MajMin { maj: 42, min: 17, min2: Some(125) }.into(),
+            ..common_case(".*")
+        },
+        "@42,17     root:root 660" <===> Conf {
+            filter: MajMin { maj: 42, min: 17, min2: None }.into(),
+            ..common_case(".*")
+        },
+        "loop([0-9]+)\troot:disk 660\t>loop/%1" <===> Conf {
+            user_group: UserGroup { user: "root".into(), group: "disk".into() },
+            on_creation: OnCreation::SymLink("loop/%1".into()).into(),
+            ..common_case("loop([0-9]+)")
+        },
+        "SUBSYSTEM=usb;DEVTYPE=usb_device;.* root:root 660 */opt/mdev/helpers/dev-bus-usb" <===> Conf {
+            envmatches: vec![
+                EnvMatch { envvar: "SUBSYSTEM".into(), regex: regex("usb"), },
+                EnvMatch { envvar: "DEVTYPE".into(), regex: regex("usb_device"), },
+            ],
+            command: Command {
+                when: WhenToRun::Both,
+                path: "/opt/mdev/helpers/dev-bus-usb".into(),
+                args: vec![],
+            }.into(),
+            ..common_case(".*")
+        },
+        "-SUBSYSTEM=net;DEVPATH=.*/net/.*;.*\troot:root 600 @/opt/mdev/helpers/settle-nics --write-mactab" <===> Conf {
+            stop: false,
+            envmatches: vec![
+                EnvMatch { envvar: "SUBSYSTEM".into(), regex: regex("net"), },
+                EnvMatch { envvar: "DEVPATH".into(), regex: regex(".*/net/.*"), },
+            ],
+            mode: Mode { mode: *b"600" },
+            command: Command {
+                when: WhenToRun::After,
+                path: "/opt/mdev/helpers/settle-nics".into(),
+                args: vec!["--write-mactab".into()],
+            }.into(),
+            ..common_case(".*")
+        },
+        "SUBSYSTEM=sound;.*  root:audio 660 @/opt/mdev/helpers/sound-control" <===> Conf {
+            envmatches: vec![EnvMatch { envvar: "SUBSYSTEM".into(), regex: regex("sound"), }],
+            user_group: UserGroup { user: "root".into(), group: "audio".into() },
+            command: Command {
+                when: WhenToRun::After,
+                path: "/opt/mdev/helpers/sound-control".into(),
+                args: vec![],
+            }.into(),
+            ..common_case(".*")
+        },
+        "cpu([0-9]+)\troot:root 600\t=cpu/%1/cpuid" <===> Conf {
+            mode: Mode { mode: *b"600" },
+            on_creation: OnCreation::Move("cpu/%1/cpuid".into()).into(),
+            ..common_case("cpu([0-9]+)")
+        },
+        "SUBSYSTEM=input;.* root:input 660" <===> Conf {
+            envmatches: vec![EnvMatch { envvar: "SUBSYSTEM".into(), regex: regex("input"), }],
+            user_group: UserGroup { user: "root".into(), group: "input".into() },
+            ..common_case(".*")
+        },
+        "[0-9]+:[0-9]+:[0-9]+:[0-9]+ root:root 660 !" <===> Conf {
+            on_creation: OnCreation::Prevent.into(),
+            ..common_case("[0-9]+:[0-9]+:[0-9]+:[0-9]+")
+        },
+    }
+
     #[test]
-    fn it_works() {
-        let input = include_str!("../assets/test.conf");
-        for conf in super::parse(input) {
-            println!("{}", conf);
+    fn test_all() {
+        let conf = parse(INPUT);
+        let hardcoded = outs();
+
+        for (a, b) in conf.iter().zip(hardcoded.iter()) {
+            assert_eq!(a, b);
+        }
+
+        for (source, parsed) in INPUT.lines().zip(conf.iter().map(ToString::to_string)) {
+            let parts = source.split_whitespace().zip(parsed.split_whitespace());
+            for (source, parsed) in parts {
+                assert_eq!(source, parsed)
+            }
         }
     }
 }
