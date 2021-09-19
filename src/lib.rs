@@ -12,12 +12,12 @@ struct ConfParser;
 #[derive(Debug, PartialEq)]
 /// A line in the configuration file
 pub struct Conf {
-    /// Wether to stop is this filter matches
+    /// Whether to stop is this filter matches
     stop: bool,
     envmatches: Vec<EnvMatch>,
     /// Filter used to match the devices
     filter: Filter,
-    /// User and gruop that will own the device
+    /// User and group that will own the device
     user_group: UserGroup,
     /// Permissions that the specified user and group have on the device
     mode: Mode,
