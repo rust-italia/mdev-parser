@@ -13,19 +13,19 @@ struct ConfParser;
 /// A line in the configuration file
 pub struct Conf {
     /// Whether to stop is this filter matches
-    stop: bool,
-    envmatches: Vec<EnvMatch>,
+    pub stop: bool,
+    pub envmatches: Vec<EnvMatch>,
     /// Filter used to match the devices
-    filter: Filter,
+    pub filter: Filter,
     /// User and group that will own the device
-    user_group: UserGroup,
+    pub user_group: UserGroup,
     /// Permissions that the specified user and group have on the device
-    mode: Mode,
+    pub mode: Mode,
     /// What to do with the device node, if [`None`] it gets placed in `/dev/` with its
     /// original name
-    on_creation: Option<OnCreation>,
+    pub on_creation: Option<OnCreation>,
     /// Additional command that has to be executed when creating and/or removing the node
-    command: Option<Command>,
+    pub command: Option<Command>,
 }
 
 impl Conf {
@@ -129,8 +129,8 @@ impl Display for Conf {
 
 #[derive(Debug)]
 pub struct EnvMatch {
-    envvar: String,
-    regex: Regex,
+    pub envvar: String,
+    pub regex: Regex,
 }
 
 impl EnvMatch {
@@ -171,9 +171,9 @@ impl From<MajMin> for Filter {
 #[derive(Debug)]
 /// A regex used for matching devices based on their names
 pub struct DeviceRegex {
-    envvar: Option<String>,
+    pub envvar: Option<String>,
     /// [`Regex`] used for matching
-    regex: Regex,
+    pub regex: Regex,
 }
 
 impl DeviceRegex {
@@ -202,9 +202,9 @@ impl PartialEq for DeviceRegex {
 #[derive(Debug, PartialEq)]
 /// TODO: add docs
 pub struct MajMin {
-    maj: u8,
-    min: u8,
-    min2: Option<u8>,
+    pub maj: u8,
+    pub min: u8,
+    pub min2: Option<u8>,
 }
 
 impl MajMin {
@@ -222,9 +222,9 @@ impl MajMin {
 /// Contains the user and group names
 pub struct UserGroup {
     /// Name of the user
-    user: String,
+    pub user: String,
     /// Name of the group
-    group: String,
+    pub group: String,
 }
 
 impl UserGroup {
@@ -241,7 +241,7 @@ impl UserGroup {
 /// Contains the access mode or permissions
 pub struct Mode {
     /// Permissions, each value is between `b'0'` and `b'7'`
-    mode: [u8; 3],
+    pub mode: [u8; 3],
 }
 
 impl Mode {
@@ -304,11 +304,11 @@ impl WhenToRun {
 #[derive(Debug, PartialEq)]
 pub struct Command {
     /// When to run the command
-    when: WhenToRun,
+    pub when: WhenToRun,
     /// Path to the executable
-    path: String,
+    pub path: String,
     /// Command line arguments
-    args: Vec<String>,
+    pub args: Vec<String>,
 }
 
 impl Command {
