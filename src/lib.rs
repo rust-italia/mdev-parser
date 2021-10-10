@@ -2,7 +2,7 @@
 extern crate pest_derive;
 use pest::{iterators::Pair, Parser};
 use regex::Regex;
-use std::{convert::TryInto, fmt::Display, str::from_utf8};
+use std::fmt::Display;
 use tracing::error;
 
 #[derive(Parser)]
@@ -20,7 +20,7 @@ pub struct Conf {
     /// User and group that will own the device
     pub user_group: UserGroup,
     /// Permissions that the specified user and group have on the device
-    pub mode: Mode,
+    pub mode: u32,
     /// What to do with the device node, if [`None`] it gets placed in `/dev/` with its
     /// original name
     pub on_creation: Option<OnCreation>,
@@ -54,7 +54,7 @@ impl Conf {
             _ => unreachable!(),
         };
         let user_group = UserGroup::from_rule(conf.next().unwrap());
-        let mode = Mode::from_rule(conf.next().unwrap());
+        let mode = mode_from_rule(conf.next().unwrap());
 
         let (on_creation, command) = match conf.next() {
             Some(next) if next.as_rule() == Rule::on_creation => (
@@ -100,10 +100,8 @@ impl Display for Conf {
         }?;
         write!(
             f,
-            " {}:{} {}",
-            self.user_group.user,
-            self.user_group.group,
-            from_utf8(&self.mode.mode).unwrap()
+            " {}:{} {:03o}",
+            self.user_group.user, self.user_group.group, self.mode,
         )?;
         if let Some(on_creation) = &self.on_creation {
             match on_creation {
@@ -238,21 +236,6 @@ impl UserGroup {
 }
 
 #[derive(Debug, PartialEq)]
-/// Contains the access mode or permissions
-pub struct Mode {
-    /// Permissions, each value is between `b'0'` and `b'7'`
-    pub mode: [u8; 3],
-}
-
-impl Mode {
-    fn from_rule(v: Pair<'_, Rule>) -> Self {
-        debug_assert_eq!(v.as_rule(), Rule::mode);
-        let mode = v.as_str().as_bytes().try_into().unwrap();
-        Self { mode }
-    }
-}
-
-#[derive(Debug, PartialEq)]
 /// Additional actions to take on creation of the device node
 pub enum OnCreation {
     /// Moves/renames the device. If the path ends with `/` then the name will be stay the same
@@ -356,6 +339,11 @@ fn u8_from_rule(v: Pair<'_, Rule>) -> u8 {
     }
 }
 
+fn mode_from_rule(v: Pair<'_, Rule>) -> u32 {
+    debug_assert_eq!(v.as_rule(), Rule::mode);
+    u32::from_str_radix(v.as_str(), 8).unwrap()
+}
+
 /// Parses every line of the configuration contained in `input` excluding invalid ones.
 pub fn parse(input: &str) -> Vec<Conf> {
     let filter_map = |line| {
@@ -398,7 +386,7 @@ mod tests {
                 user: "root".into(),
                 group: "root".into(),
             },
-            mode: Mode { mode: *b"660" },
+            mode: 0o660,
             on_creation: None,
             command: None,
         }
@@ -464,7 +452,7 @@ mod tests {
                 EnvMatch { envvar: "SUBSYSTEM".into(), regex: regex("net"), },
                 EnvMatch { envvar: "DEVPATH".into(), regex: regex(".*/net/.*"), },
             ],
-            mode: Mode { mode: *b"600" },
+            mode: 0o600,
             command: Command {
                 when: WhenToRun::After,
                 path: "/opt/mdev/helpers/settle-nics".into(),
@@ -483,7 +471,7 @@ mod tests {
             ..common_case(".*")
         },
         "cpu([0-9]+)\troot:root 600\t=cpu/%1/cpuid" <===> Conf {
-            mode: Mode { mode: *b"600" },
+            mode: 0o600,
             on_creation: OnCreation::Move("cpu/%1/cpuid".into()).into(),
             ..common_case("cpu([0-9]+)")
         },
