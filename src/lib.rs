@@ -17,8 +17,10 @@ pub struct Conf {
     pub envmatches: Vec<EnvMatch>,
     /// Filter used to match the devices
     pub filter: Filter,
-    /// User and group that will own the device
-    pub user_group: UserGroup,
+    /// User that will own the device
+    pub user: String,
+    /// Group that will own the device
+    pub group: String,
     /// Permissions that the specified user and group have on the device
     pub mode: u32,
     /// What to do with the device node, if [`None`] it gets placed in `/dev/` with its
@@ -53,7 +55,7 @@ impl Conf {
             Rule::device_regex => Filter::DeviceRegex(DeviceRegex::from_rule(filter)?),
             _ => unreachable!(),
         };
-        let user_group = UserGroup::from_rule(conf.next().unwrap());
+        let (user, group) = user_group_from_rule(conf.next().unwrap());
         let mode = mode_from_rule(conf.next().unwrap());
 
         let (on_creation, command) = match conf.next() {
@@ -69,7 +71,8 @@ impl Conf {
             stop,
             envmatches,
             filter,
-            user_group,
+            user,
+            group,
             mode,
             on_creation,
             command,
@@ -98,11 +101,7 @@ impl Display for Conf {
             }) => write!(f, "@{},{}-{}", maj, min, min2),
             Filter::MajMin(v) => write!(f, "@{},{}", v.maj, v.min),
         }?;
-        write!(
-            f,
-            " {}:{} {:03o}",
-            self.user_group.user, self.user_group.group, self.mode,
-        )?;
+        write!(f, " {}:{} {:03o}", self.user, self.group, self.mode,)?;
         if let Some(on_creation) = &self.on_creation {
             match on_creation {
                 OnCreation::Move(p) => write!(f, " ={}", p),
@@ -217,25 +216,6 @@ impl MajMin {
 }
 
 #[derive(Debug, PartialEq)]
-/// Contains the user and group names
-pub struct UserGroup {
-    /// Name of the user
-    pub user: String,
-    /// Name of the group
-    pub group: String,
-}
-
-impl UserGroup {
-    fn from_rule(v: Pair<'_, Rule>) -> Self {
-        debug_assert_eq!(v.as_rule(), Rule::usergroup);
-        let mut usergroup = v.into_inner();
-        let user = name_from_rule(usergroup.next().unwrap()).into();
-        let group = name_from_rule(usergroup.next().unwrap()).into();
-        Self { user, group }
-    }
-}
-
-#[derive(Debug, PartialEq)]
 /// Additional actions to take on creation of the device node
 pub enum OnCreation {
     /// Moves/renames the device. If the path ends with `/` then the name will be stay the same
@@ -339,6 +319,14 @@ fn u8_from_rule(v: Pair<'_, Rule>) -> u8 {
     }
 }
 
+fn user_group_from_rule(v: Pair<'_, Rule>) -> (String, String) {
+    debug_assert_eq!(v.as_rule(), Rule::usergroup);
+    let mut usergroup = v.into_inner();
+    let user = name_from_rule(usergroup.next().unwrap()).into();
+    let group = name_from_rule(usergroup.next().unwrap()).into();
+    (user, group)
+}
+
 fn mode_from_rule(v: Pair<'_, Rule>) -> u32 {
     debug_assert_eq!(v.as_rule(), Rule::mode);
     u32::from_str_radix(v.as_str(), 8).unwrap()
@@ -382,10 +370,8 @@ mod tests {
                 regex: regex(r),
             }
             .into(),
-            user_group: UserGroup {
-                user: "root".into(),
-                group: "root".into(),
-            },
+            user: "root".into(),
+            group: "root".into(),
             mode: 0o660,
             on_creation: None,
             command: None,
@@ -430,7 +416,7 @@ mod tests {
             ..common_case(".*")
         },
         "loop([0-9]+)\troot:disk 660\t>loop/%1" <===> Conf {
-            user_group: UserGroup { user: "root".into(), group: "disk".into() },
+            user: "root".into(), group: "disk".into(),
             on_creation: OnCreation::SymLink("loop/%1".into()).into(),
             ..common_case("loop([0-9]+)")
         },
@@ -462,7 +448,7 @@ mod tests {
         },
         "SUBSYSTEM=sound;.*  root:audio 660 @/opt/mdev/helpers/sound-control" <===> Conf {
             envmatches: vec![EnvMatch { envvar: "SUBSYSTEM".into(), regex: regex("sound"), }],
-            user_group: UserGroup { user: "root".into(), group: "audio".into() },
+            user: "root".into(), group: "audio".into(),
             command: Command {
                 when: WhenToRun::After,
                 path: "/opt/mdev/helpers/sound-control".into(),
@@ -477,7 +463,7 @@ mod tests {
         },
         "SUBSYSTEM=input;.* root:input 660" <===> Conf {
             envmatches: vec![EnvMatch { envvar: "SUBSYSTEM".into(), regex: regex("input"), }],
-            user_group: UserGroup { user: "root".into(), group: "input".into() },
+            user: "root".into(), group: "input".into(),
             ..common_case(".*")
         },
         "[0-9]+:[0-9]+:[0-9]+:[0-9]+ root:root 660 !" <===> Conf {
