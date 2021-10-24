@@ -2,7 +2,7 @@
 extern crate pest_derive;
 use pest::{iterators::Pair, Parser};
 use regex::Regex;
-use std::fmt::Display;
+use std::{fmt::Display, num::ParseIntError};
 use tracing::error;
 
 #[derive(Parser)]
@@ -31,7 +31,7 @@ pub struct Conf {
 }
 
 impl Conf {
-    fn from_rule(v: Pair<'_, Rule>) -> Result<Self, regex::Error> {
+    fn from_rule(v: Pair<'_, Rule>) -> anyhow::Result<Self> {
         debug_assert_eq!(v.as_rule(), Rule::rule);
         let mut conf = v.into_inner();
         let matcher = conf.next().unwrap();
@@ -51,7 +51,7 @@ impl Conf {
         }
         let filter = matcher.next().unwrap();
         let filter = match filter.as_rule() {
-            Rule::majmin => Filter::MajMin(MajMin::from_rule(filter)),
+            Rule::majmin => Filter::MajMin(MajMin::from_rule(filter)?),
             Rule::device_regex => Filter::DeviceRegex(DeviceRegex::from_rule(filter)?),
             _ => unreachable!(),
         };
@@ -199,19 +199,19 @@ impl PartialEq for DeviceRegex {
 #[derive(Debug, PartialEq)]
 /// TODO: add docs
 pub struct MajMin {
-    pub maj: u8,
-    pub min: u8,
-    pub min2: Option<u8>,
+    pub maj: u32,
+    pub min: u32,
+    pub min2: Option<u32>,
 }
 
 impl MajMin {
-    fn from_rule(v: Pair<'_, Rule>) -> Self {
+    fn from_rule(v: Pair<'_, Rule>) -> anyhow::Result<Self> {
         debug_assert_eq!(v.as_rule(), Rule::majmin);
         let mut majmin = v.into_inner();
-        let maj = u8_from_rule(majmin.next().unwrap());
-        let min = u8_from_rule(majmin.next().unwrap());
-        let min2 = majmin.next().map(u8_from_rule);
-        Self { maj, min, min2 }
+        let maj = u32_from_rule(majmin.next().unwrap())?;
+        let min = u32_from_rule(majmin.next().unwrap())?;
+        let min2 = majmin.next().map(u32_from_rule).transpose()?;
+        Ok(Self { maj, min, min2 })
     }
 }
 
@@ -311,12 +311,9 @@ fn regex_from_rule(v: Pair<'_, Rule>) -> Result<Regex, regex::Error> {
     Regex::new(v.as_str())
 }
 
-fn u8_from_rule(v: Pair<'_, Rule>) -> u8 {
-    debug_assert_eq!(v.as_rule(), Rule::u8);
-    match v.as_str().parse() {
-        Ok(v) => v,
-        Err(_) => unreachable!(),
-    }
+fn u32_from_rule(v: Pair<'_, Rule>) -> Result<u32, ParseIntError> {
+    debug_assert_eq!(v.as_rule(), Rule::number);
+    v.as_str().parse()
 }
 
 fn user_group_from_rule(v: Pair<'_, Rule>) -> (String, String) {
