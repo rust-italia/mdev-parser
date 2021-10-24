@@ -1,11 +1,5 @@
-u8 = @{
-    ("25" ~ '0'..'5') |
-    ("2" ~ '0'..'4' ~ ASCII_DIGIT) |
-    ("1" ~ ASCII_DIGIT{2} ) | 
-    (ASCII_NONZERO_DIGIT ~ ASCII_DIGIT) |
-    ASCII_DIGIT
-}
-majmin = ${ "@" ~ u8 ~ "," ~ u8 ~ (("-" ~ u8) | !"-") }
+number = @{ ASCII_DIGIT+ }
+majmin = ${ "@" ~ number ~ "," ~ number ~ (("-" ~ number) | !"-") }
 
 regex = @{ (!WHITESPACE ~ !";" ~ ASCII)+ }
 
