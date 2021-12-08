@@ -124,6 +124,25 @@ impl Display for Conf {
     }
 }
 
+impl Default for Conf {
+    fn default() -> Self {
+        let filter = Filter::DeviceRegex(DeviceRegex{
+            envvar: None,
+            regex: Regex::new(".*").unwrap(),
+        });
+        Conf {
+            stop: false,
+            envmatches: vec![],
+            filter,
+            user: "root".to_string(),
+            group: "root".to_string(),
+            mode: 0,
+            on_creation: None,
+            command: None
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct EnvMatch {
     pub envvar: String,
