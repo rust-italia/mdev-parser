@@ -126,7 +126,7 @@ impl Display for Conf {
 
 impl Default for Conf {
     fn default() -> Self {
-        let filter = Filter::DeviceRegex(DeviceRegex{
+        let filter = Filter::DeviceRegex(DeviceRegex {
             envvar: None,
             regex: Regex::new(".*").unwrap(),
         });
@@ -138,7 +138,7 @@ impl Default for Conf {
             group: "root".to_string(),
             mode: 0,
             on_creation: None,
-            command: None
+            command: None,
         }
     }
 }
