@@ -16,7 +16,7 @@ usergroup = { name ~ ":" ~ name }
 
 mode = { '0'..'7'{3} }
 
-// TODO: maybe find a better definition
+// TODO:  maybe find a better definition
 path_char = _{ !"/" ~ !"\x00" ~ !WHITESPACE ~ ANY }
 path = @{ "/"? ~ (path_char+ ~ "/")* ~ path_char+? }
 
