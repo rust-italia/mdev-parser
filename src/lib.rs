@@ -136,7 +136,7 @@ impl Default for Conf {
             filter,
             user: "root".to_string(),
             group: "root".to_string(),
-            mode: 0,
+            mode: 0o660,
             on_creation: None,
             command: None,
         }
