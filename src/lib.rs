@@ -2,6 +2,7 @@
 extern crate pest_derive;
 use pest::{iterators::Pair, Parser};
 use regex::Regex;
+use std::iter::once;
 use std::{fmt::Display, num::ParseIntError};
 use tracing::error;
 
@@ -360,7 +361,11 @@ pub fn parse(input: &str) -> Vec<Conf> {
             .map_err(|err| error!("regex error: {}", err))
             .ok()
     };
-    input.lines().filter_map(filter_map).collect()
+    input
+        .lines()
+        .filter_map(filter_map)
+        .chain(once(Conf::default()))
+        .collect()
 }
 
 #[cfg(test)]
