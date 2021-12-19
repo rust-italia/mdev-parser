@@ -3,6 +3,7 @@ extern crate pest_derive;
 use pest::{iterators::Pair, Parser};
 use regex::Regex;
 use std::iter::once;
+use std::path::PathBuf;
 use std::{fmt::Display, num::ParseIntError};
 use tracing::error;
 
@@ -105,8 +106,8 @@ impl Display for Conf {
         write!(f, " {}:{} {:03o}", self.user, self.group, self.mode,)?;
         if let Some(on_creation) = &self.on_creation {
             match on_creation {
-                OnCreation::Move(p) => write!(f, " ={}", p),
-                OnCreation::SymLink(p) => write!(f, " >{}", p),
+                OnCreation::Move(p) => write!(f, " ={}", p.display()),
+                OnCreation::SymLink(p) => write!(f, " >{}", p.display()),
                 OnCreation::Prevent => write!(f, " !"),
             }?;
         }
@@ -239,10 +240,10 @@ impl MajMin {
 /// Additional actions to take on creation of the device node
 pub enum OnCreation {
     /// Moves/renames the device. If the path ends with `/` then the name will be stay the same
-    Move(String),
+    Move(PathBuf),
     /// Same as [`OnCreation::Move`] but also creates a symlink in `/dev/` to the
     /// renamed/moved device
-    SymLink(String),
+    SymLink(PathBuf),
     /// Prevents the creation of the device node
     Prevent,
 }
