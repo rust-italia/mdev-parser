@@ -266,7 +266,7 @@ impl OnCreation {
 pub enum WhenToRun {
     /// After creating the device
     After,
-    /// Before removing te device
+    /// Before removing the device
     Before,
     /// Both after the creation and before removing
     Both,
