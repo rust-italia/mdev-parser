@@ -105,8 +105,8 @@ impl Display for Conf {
         write!(f, " {}:{} {:03o}", self.user, self.group, self.mode,)?;
         if let Some(on_creation) = &self.on_creation {
             match on_creation {
-                OnCreation::Move(p) => write!(f, " ={}", p.display()),
-                OnCreation::SymLink(p) => write!(f, " >{}", p.display()),
+                OnCreation::Move(p) => write!(f, " ={}", p),
+                OnCreation::SymLink(p) => write!(f, " >{}", p),
                 OnCreation::Prevent => write!(f, " !"),
             }?;
         }
