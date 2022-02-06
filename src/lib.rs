@@ -3,7 +3,6 @@ extern crate pest_derive;
 use pest::{iterators::Pair, Parser};
 use regex::Regex;
 use std::iter::once;
-use std::path::PathBuf;
 use std::{fmt::Display, num::ParseIntError};
 use tracing::error;
 
@@ -240,10 +239,10 @@ impl MajMin {
 /// Additional actions to take on creation of the device node
 pub enum OnCreation {
     /// Moves/renames the device. If the path ends with `/` then the name will be stay the same
-    Move(PathBuf),
+    Move(String),
     /// Same as [`OnCreation::Move`] but also creates a symlink in `/dev/` to the
     /// renamed/moved device
-    SymLink(PathBuf),
+    SymLink(String),
     /// Prevents the creation of the device node
     Prevent,
 }
