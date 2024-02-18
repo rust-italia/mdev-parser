@@ -274,8 +274,7 @@ pub enum WhenToRun {
 impl WhenToRun {
     fn from_rule(v: Pair<'_, Rule>) -> Self {
         debug_assert_eq!(v.as_rule(), Rule::when);
-        let rule = v.into_inner().next().unwrap().as_rule();
-        match rule {
+        match v.into_inner().next().unwrap().as_rule() {
             Rule::after => Self::After,
             Rule::before => Self::Before,
             Rule::both => Self::Both,
